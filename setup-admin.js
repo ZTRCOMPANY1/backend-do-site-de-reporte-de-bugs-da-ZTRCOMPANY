@@ -4,8 +4,8 @@ const { pool, initDatabase } = require('./db');
 
 async function main() {
   await initDatabase();
-  const email = (process.env.ADMIN_EMAIL || 'admin@ztrcompany.com').toLowerCase();
-  const password = process.env.ADMIN_PASSWORD || '12345678';
+  const email = (process.env.ADMIN_EMAIL || 'ztremcompany@gmail.com').toLowerCase();
+  const password = process.env.ADMIN_PASSWORD || 'ZTR@2023';
   const hash = await bcrypt.hash(password, 12);
   await pool.query(`
     INSERT INTO admins (email, password_hash)
