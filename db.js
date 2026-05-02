@@ -19,10 +19,12 @@ async function initDatabase() {
       id SERIAL PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
+      created_at TIMESTAMP DEFAULT NOW()
     );
   `);
+
+  // Migração automática para bancos já criados em versões antigas do projeto.
+  await pool.query(`ALTER TABLE admins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS catalog_items (
