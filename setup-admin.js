@@ -1,22 +1,12 @@
 require('dotenv').config();
-const bcrypt = require('bcryptjs');
-const { pool, initDatabase } = require('./db');
+const { initDatabase, pool } = require('./db');
 
-async function main() {
-  await initDatabase();
-  const email = (process.env.ADMIN_EMAIL || 'ztremcompany@gmail.com').toLowerCase();
-  const password = process.env.ADMIN_PASSWORD || 'ZTR@2023';
-  const hash = await bcrypt.hash(password, 12);
-  await pool.query(`
-    INSERT INTO admins (email, password_hash)
-    VALUES ($1, $2)
-    ON CONFLICT (email) DO UPDATE SET password_hash=$2
-  `, [email, hash]);
-  console.log('Admin criado/atualizado:', email);
-  await pool.end();
-}
-
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+initDatabase()
+  .then(() => {
+    console.log('Banco e admin configurados com sucesso.');
+    return pool.end();
+  })
+  .catch((err) => {
+    console.error('Erro ao configurar admin:', err);
+    process.exit(1);
+  });

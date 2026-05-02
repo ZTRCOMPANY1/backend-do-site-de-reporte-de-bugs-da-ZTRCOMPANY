@@ -1,10 +1,16 @@
 const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
+
+if (!process.env.DATABASE_URL) {
+  console.error('ERRO: DATABASE_URL não configurada. Configure no Render em Environment.');
+  process.exit(1);
+}
+
+const isRenderDb = process.env.DATABASE_URL.includes('render.com') || process.env.NODE_ENV === 'production';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('render.com')
-    ? { rejectUnauthorized: false }
-    : false
+  ssl: isRenderDb ? { rejectUnauthorized: false } : false
 });
 
 async function initDatabase() {
@@ -13,7 +19,8 @@ async function initDatabase() {
       id SERIAL PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW()
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     );
   `);
 
@@ -48,6 +55,32 @@ async function initDatabase() {
     );
   `);
 
+  await syncAdminFromEnv();
+  await seedCatalog();
+}
+
+async function syncAdminFromEnv() {
+  const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD || '';
+
+  if (!email || !password) {
+    console.warn('AVISO: ADMIN_EMAIL ou ADMIN_PASSWORD não configurados. Login admin ficará indisponível.');
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  await pool.query(`
+    INSERT INTO admins (email, password_hash)
+    VALUES ($1, $2)
+    ON CONFLICT (email)
+    DO UPDATE SET password_hash = EXCLUDED.password_hash, updated_at = NOW();
+  `, [email, passwordHash]);
+
+  console.log(`Admin sincronizado pelo ENV: ${email}`);
+}
+
+async function seedCatalog() {
   const count = await pool.query('SELECT COUNT(*) FROM catalog_items');
   if (Number(count.rows[0].count) === 0) {
     await pool.query(`

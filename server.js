@@ -10,10 +10,26 @@ const { authRequired } = require('./middleware');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(helmet());
+if (!process.env.JWT_SECRET) {
+  console.error('ERRO: JWT_SECRET não configurado. Configure no Render em Environment.');
+  process.exit(1);
+}
+
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:5500',
+  'http://127.0.0.1:5500',
+  'http://localhost:3000'
+].filter(Boolean);
+
+app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cors({
-  origin: process.env.FRONTEND_URL ? [process.env.FRONTEND_URL, 'http://localhost:5500', 'http://127.0.0.1:5500'] : '*',
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || process.env.CORS_ALLOW_ALL === 'true') return callback(null, true);
+    return callback(null, true); // Mantido aberto para GitHub Pages/custom domains sem quebrar deploy inicial.
+  },
   credentials: true
 }));
 
@@ -26,15 +42,24 @@ app.get('/api/health', (req, res) => {
 });
 
 app.post('/api/admin/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const password = String(req.body.password || '');
 
-  const result = await pool.query('SELECT * FROM admins WHERE email=$1', [email.toLowerCase()]);
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
+  }
+
+  const result = await pool.query('SELECT * FROM admins WHERE email=$1', [email]);
   const admin = result.rows[0];
-  if (!admin) return res.status(401).json({ error: 'Login inválido.' });
+
+  if (!admin) {
+    return res.status(401).json({ error: 'Login inválido. Confira ADMIN_EMAIL no Render e faça redeploy.' });
+  }
 
   const ok = await bcrypt.compare(password, admin.password_hash);
-  if (!ok) return res.status(401).json({ error: 'Login inválido.' });
+  if (!ok) {
+    return res.status(401).json({ error: 'Login inválido. Confira ADMIN_PASSWORD no Render e faça redeploy.' });
+  }
 
   const token = jwt.sign({ id: admin.id, email: admin.email }, process.env.JWT_SECRET, { expiresIn: '8h' });
   res.json({ token, admin: { email: admin.email } });
@@ -92,7 +117,7 @@ app.post('/api/admin/catalog', authRequired, async (req, res) => {
   if (!['game', 'site', 'app'].includes(type) || !name) {
     return res.status(400).json({ error: 'Tipo e nome são obrigatórios.' });
   }
-  const result = await pool.query('INSERT INTO catalog_items (type, name, url) VALUES ($1,$2,$3) RETURNING *', [type, name, url || null]);
+  const result = await pool.query('INSERT INTO catalog_items (type, name, url) VALUES ($1,$2,$3) RETURNING *', [type, name.trim(), url || null]);
   res.status(201).json(result.rows[0]);
 });
 
